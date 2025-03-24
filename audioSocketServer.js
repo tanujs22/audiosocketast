@@ -334,9 +334,29 @@ const server = net.createServer((socket) => {
 const AUDIOSOCKET_PORT = config.AUDIOSOCKET_PORT || 8089;
 
 function start() {
-  server.listen(AUDIOSOCKET_PORT, () => {
-    console.log(`🚀 AudioSocket server listening on port ${AUDIOSOCKET_PORT}`);
+  // Handle port in use error gracefully
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ ERROR: Port ${AUDIOSOCKET_PORT} is already in use!`);
+      console.error('Please ensure no other process is using this port or change the AUDIOSOCKET_PORT in config.');
+      console.error('You can check what process is using the port with: "sudo lsof -i :8089"');
+      console.error('Then either stop that process or change the port in your .env file');
+      
+      // Exit with non-zero code to indicate error
+      process.exit(1);
+    } else {
+      console.error(`❌ AudioSocket server error:`, err);
+    }
   });
+
+  try {
+    server.listen(AUDIOSOCKET_PORT, () => {
+      console.log(`🚀 AudioSocket server listening on port ${AUDIOSOCKET_PORT}`);
+    });
+  } catch (error) {
+    console.error(`❌ Failed to start AudioSocket server:`, error.message);
+    process.exit(1);
+  }
   
   return server;
 }
