@@ -142,11 +142,18 @@ const server = net.createServer((socket) => {
           
           console.log(`📑 AudioSocket session ID: ${sessionId}, Channel: ${asteriskChannel}`);
           
-          // Parse caller and called from the session ID
-          // Expected format: caller_called_uniqueid
-          const parts = sessionId.split('_');
-          const caller = parts[0];
-          const called = parts[1];
+          // Try to extract caller info from channel name if available
+          let caller = "unknown";
+          let called = "unknown";
+          
+          // SIP channel format is typically SIP/number-identifier
+          if (asteriskChannel && asteriskChannel.startsWith('SIP/')) {
+            const channelParts = asteriskChannel.split('/')[1].split('-')[0];
+            caller = channelParts;
+          }
+          
+          // Default the called number to 5000 (our voicebot extension)
+          called = "5000";
           
           // Connect to Voicegenie
           try {
