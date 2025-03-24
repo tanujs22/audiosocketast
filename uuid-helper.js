@@ -7,5 +7,6 @@ const { v4: uuidv4 } = require('uuid');
 const uuid = uuidv4();
 
 // Output for Asterisk AGI
-process.stdout.write(`SET VARIABLE UUID "${uuid}"\n\n`);
+console.log(`SET VARIABLE UUID "${uuid}"`);
+console.log(`"`); // Empty line as required by AGI protocol
 process.exit(0);
