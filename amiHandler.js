@@ -4,10 +4,10 @@ const config = require('./config');
 
 // Configure AMI settings
 const AMI_CONFIG = {
-  username: config.AMI_USERNAME || 'voicebot',
-  password: config.AMI_PASSWORD || 'supersecret123',
-  host: config.AMI_HOST || '127.0.0.1',
-  port: config.AMI_PORT || 5038,
+  username: 'voicebot',
+  password: 'supersecret123',
+  host: '127.0.0.1',
+  port: 5038,
 };
 
 // Create an instance with reconnect enabled
@@ -19,9 +19,9 @@ const ami = new AmiClient({
 });
 
 // Connect to AMI
-ami.connect(AMI_CONFIG.username, AMI_CONFIG.PASSWORD, { host: AMI_CONFIG.host, port: AMI_CONFIG.port })
+ami.connect(AMI_CONFIG.username, AMI_CONFIG.password, { host: AMI_CONFIG.host, port: AMI_CONFIG.port })
   .then(() => console.log('Connected to Asterisk AMI!'))
-  .catch(err => console.error('AMI Connection Error:', err));
+  .catch(err => console.error('AMI Connection Error:', err.message));
 
 // Add event listeners
 ami.on('connect', () => {
