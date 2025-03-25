@@ -10,6 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "agi": "^0.0.1000",
     "asterisk-ami-client": "^1.1.5",
     "axios": "^1.8.4",
     "dotenv": "^16.4.7",

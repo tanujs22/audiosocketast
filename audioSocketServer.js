@@ -125,25 +125,49 @@ const server = net.createServer((socket) => {
   console.log(`🔌 New AudioSocket connection: ${socket.remoteAddress}:${socket.remotePort}`);
  
 // Handle data from Asterisk
+// Fix for the socket.on('data') handler in audioSocketServer.js
+
 socket.on('data', async (data) => {
     try {
       console.log(`📦 Received data: ${data.length} bytes`);
   
       // Initial handshake
       if (!handshakeComplete) {
+        // Parse the handshake information more carefully
+        const handshakeText = data.toString('utf8').trim();
+        console.log(`👋 Handshake received: ${handshakeText}`);
+  
+        // Respond with the protocol version
         const response = Buffer.from("AudioSocket v1.0\r\n", 'utf8');
         socket.write(response);
         console.log(`👋 Sent AudioSocket protocol response`);
         handshakeComplete = true;
   
-        const channelInfo = data.toString('utf8', 0, 100).split('\n')[0];
-        console.log(`🔍 Channel info: ${channelInfo}`);
-  
-        let caller = "6001"; // Hardcoded for testing
-        let called = "5000"; // Default to voicebot extension
+        // Try to extract channel info more reliably
+        let caller = "6001"; // Default
+        let called = "5000"; // Default
+        
+        // Extract caller/called from channel info if possible
+        try {
+          const channelInfo = handshakeText.split('\n')[0].trim();
+          console.log(`🔍 Channel info: ${channelInfo}`);
+          
+          // If your AGI script provides caller/called in a structured format,
+          // extract it here. Example: if format is "CALLER_CALLED"
+          if (channelInfo.includes('_')) {
+            const parts = channelInfo.split('_');
+            if (parts.length >= 2) {
+              caller = parts[0];
+              called = parts[1];
+            }
+          }
+        } catch (e) {
+          console.log(`⚠️ Could not parse channel info, using defaults: ${e.message}`);
+        }
+        
         console.log(`📞 Using caller=${caller}, called=${called}`);
   
-        // Initialize Voicegenie session immediately
+        // Initialize Voicegenie session
         try {
           sessionInfo = await initVoicegenieSession(caller, called, socketId);
   
@@ -153,8 +177,10 @@ socket.on('data', async (data) => {
           vgWebSocket.on('open', () => {
             console.log(`✅ Connected to Voicegenie WebSocket for ${sessionInfo.callSid}`);
   
+            // Send status callback
             sendStatusCallback(sessionInfo.statusCallbackUrl, sessionInfo.callSid, 'initiated');
   
+            // Send start event
             vgWebSocket.send(JSON.stringify({
               sequenceNumber: 0,
               event: "start",
@@ -182,7 +208,8 @@ socket.on('data', async (data) => {
                 const audioChunk = Buffer.from(msgData.media.payload, 'base64');
                 console.log(`🔊 Decoded ${audioChunk.length} bytes of audio`);
   
-                if (socket.writable && Buffer.isBuffer(audioChunk)) {
+                // Critical fix: Check if socket is still connected
+                if (socket && !socket.destroyed && socket.writable && Buffer.isBuffer(audioChunk)) {
                   socket.write(audioChunk, (err) => {
                     if (err) {
                       console.error('❌ Error sending audio to Asterisk:', err.message);
@@ -192,6 +219,7 @@ socket.on('data', async (data) => {
                   });
                 } else {
                   console.error('❌ AudioSocket is not writable or invalid audioChunk');
+                  // Don't close the connection here, just log the error
                 }
               }
               else if (msgData.event === 'transfer' && msgData.transfer?.agentUri) {
@@ -207,7 +235,8 @@ socket.on('data', async (data) => {
                     console.error('❌ Error setting AGENT_SIP_URI:', err.message);
                   } else {
                     console.log(`✅ AGENT_SIP_URI set to ${agentUri}`);
-                    socket.end();
+                    // Don't end the socket here, let Asterisk handle it
+                    // socket.end();
                   }
                 });
               }
@@ -221,11 +250,13 @@ socket.on('data', async (data) => {
   
           vgWebSocket.on('error', (err) => {
             console.error('❌ Voicegenie WebSocket error:', err.message);
+            // Don't close the socket on WebSocket error
           });
   
           vgWebSocket.on('close', () => {
             console.log(`🔌 Voicegenie WebSocket closed for call ${sessionInfo?.callSid || socketId}`);
-            socket.end();
+            // Only close the socket if Voicegenie explicitly requested it
+            // socket.end();
           });
   
           activeSessions.set(socketId, {
@@ -239,11 +270,12 @@ socket.on('data', async (data) => {
           socket.end();
         }
   
-        return; // Crucial: Ensure no further processing of initial non-audio packet
+        return; // Skip further processing for handshake packet
       }
   
       // After handshake, handle audio data from Asterisk
       if (vgWebSocket && vgWebSocket.readyState === WebSocket.OPEN) {
+        // Skip very small packets that might be control messages
         if (data.length < 10) {
           console.log(`⏭️ Skipping small packet: ${data.length} bytes`);
           return;
@@ -251,8 +283,10 @@ socket.on('data', async (data) => {
   
         console.log(`🎤 Processing audio from Asterisk: ${data.length} bytes`);
   
+        // Convert audio to base64
         const base64Audio = data.toString('base64');
   
+        // Send audio to Voicegenie
         const mediaEvent = {
           sequenceNumber: sequenceNumber++,
           event: 'media',
@@ -266,9 +300,14 @@ socket.on('data', async (data) => {
         };
   
         vgWebSocket.send(JSON.stringify(mediaEvent));
+      } else if (vgWebSocket) {
+        console.log(`⏳ WebSocket not ready, state: ${vgWebSocket.readyState}`);
+      } else {
+        console.log(`⚠️ No WebSocket available for audio forwarding`);
       }
     } catch (error) {
       console.error('❌ Error processing AudioSocket data:', error.message);
+      // Don't close the socket on processing error
     }
   });
   
