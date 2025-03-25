@@ -147,7 +147,6 @@ const server = net.createServer((socket) => {
         let called = "5000"; // Default to voicebot extension
         
         console.log(`📞 Using caller=${caller}, called=${called}`);
-        
         // Connect to Voicegenie
         try {
           sessionInfo = await initVoicegenieSession(caller, called, socketId);
