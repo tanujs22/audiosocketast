@@ -5,7 +5,7 @@ const config = require('./config');
 // Configure AMI settings
 const AMI_CONFIG = {
   username: config.AMI_USERNAME || 'voicebot',
-  password: config.AMI_PASSWORD || 'your_ami_password_here',
+  password: config.AMI_PASSWORD || 'supersecret123',
   host: config.AMI_HOST || '127.0.0.1',
   port: config.AMI_PORT || 5038,
 };
