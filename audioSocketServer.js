@@ -182,59 +182,52 @@ const server = net.createServer((socket) => {
           vgWebSocket.on('message', (message) => {
             try {
               const msgData = JSON.parse(message);
-              
-              // Handle media messages (audio from voicebot)
+          
               if (msgData.event === 'media' && msgData.media && msgData.media.payload) {
                 console.log(`📩 Received media from Voicegenie (${msgData.media.payload.length} chars)`);
-                
-                // Decode base64 audio
+          
                 const audioChunk = Buffer.from(msgData.media.payload, 'base64');
                 console.log(`🔊 Decoded ${audioChunk.length} bytes of audio`);
-                
-// Format according to AudioSocket protocol
-                // AudioSocket protocol expects raw µ-law audio with NO framing/headers
-                if (socket.writable) {
-                  // Important: Don't add any protocol headers or framing!
-                  // Just send the raw audio bytes exactly as received from base64 decoding
-                  setTimeout(() => {
-                    try {
-                      console.log(`📤 Sending ${audioChunk.length} bytes of raw audio to Asterisk`);
-                      socket.write(audioChunk);
-                    } catch (err) {
+          
+                // Ensure the socket is writable and the data is a Buffer
+                if (socket.writable && Buffer.isBuffer(audioChunk)) {
+                  socket.write(audioChunk, (err) => {
+                    if (err) {
                       console.error('❌ Error sending audio to Asterisk:', err.message);
+                    } else {
+                      console.log(`📤 Sent audio (${audioChunk.length} bytes) to Asterisk`);
                     }
-                  }, 100); // 100ms delay
+                  });
+                } else {
+                  console.error('❌ AudioSocket is not writable or invalid audioChunk');
                 }
               }
-              // Handle transfer request
-              else if (msgData.event === 'transfer' && msgData.transfer && msgData.transfer.agentUri) {
+              else if (msgData.event === 'transfer' && msgData.transfer?.agentUri) {
                 const agentUri = msgData.transfer.agentUri;
                 console.log(`🔄 Transfer request to agent: ${agentUri}`);
-                
-                // Set channel variable for dialplan to use
+          
                 ami.action({
                   Action: 'Setvar',
                   Variable: 'AGENT_SIP_URI',
                   Value: agentUri
-                }, (err, res) => {
+                }, (err) => {
                   if (err) {
-                    console.error('❌ Error setting agent URI variable:', err);
+                    console.error('❌ Error setting AGENT_SIP_URI:', err.message);
                   } else {
-                    console.log(`✅ Set AGENT_SIP_URI=${agentUri}`);
-                    
-                    // Close AudioSocket to return to dialplan
+                    console.log(`✅ AGENT_SIP_URI set to ${agentUri}`);
                     socket.end();
                   }
                 });
               }
-              // Other events
               else {
-                console.log(`📩 Received non-media event from Voicegenie: ${msgData.event}`);
+                // Explicitly ignore and log non-media events without sending to Asterisk
+                console.log(`📩 Ignoring non-media event from Voicegenie: ${msgData.event}`);
               }
             } catch (error) {
               console.error('❌ Error processing Voicegenie message:', error.message);
             }
           });
+          
           
           vgWebSocket.on('error', (err) => {
             console.error('❌ Voicegenie WebSocket error:', err.message);
