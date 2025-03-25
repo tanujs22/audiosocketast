@@ -191,13 +191,18 @@ const server = net.createServer((socket) => {
                 const audioChunk = Buffer.from(msgData.media.payload, 'base64');
                 console.log(`🔊 Decoded ${audioChunk.length} bytes of audio`);
                 
-                // Format according to AudioSocket protocol
-                // AudioSocket expects raw audio data with no headers
+// Format according to AudioSocket protocol
+                // AudioSocket protocol expects raw µ-law audio with NO framing/headers
                 if (socket.writable) {
-                  // Add small delay to ensure connection is stable
+                  // Important: Don't add any protocol headers or framing!
+                  // Just send the raw audio bytes exactly as received from base64 decoding
                   setTimeout(() => {
-                    console.log(`📤 Sending ${audioChunk.length} bytes to Asterisk`);
-                    socket.write(audioChunk);
+                    try {
+                      console.log(`📤 Sending ${audioChunk.length} bytes of raw audio to Asterisk`);
+                      socket.write(audioChunk);
+                    } catch (err) {
+                      console.error('❌ Error sending audio to Asterisk:', err.message);
+                    }
                   }, 100); // 100ms delay
                 }
               }
