@@ -123,44 +123,38 @@ const server = net.createServer((socket) => {
   let handshakeComplete = false;
   
   console.log(`🔌 New AudioSocket connection: ${socket.remoteAddress}:${socket.remotePort}`);
-  
-  // Handle data from Asterisk
-  socket.on('data', async (data) => {
+ 
+// Handle data from Asterisk
+socket.on('data', async (data) => {
     try {
-      // Log the binary data for debugging
       console.log(`📦 Received data: ${data.length} bytes`);
-      
+  
       // Initial handshake
       if (!handshakeComplete) {
-        // According to protocol, first send protocol version
         const response = Buffer.from("AudioSocket v1.0\r\n", 'utf8');
         socket.write(response);
         console.log(`👋 Sent AudioSocket protocol response`);
         handshakeComplete = true;
-        
-        // Extract UUID if possible from channel info
+  
         const channelInfo = data.toString('utf8', 0, 100).split('\n')[0];
         console.log(`🔍 Channel info: ${channelInfo}`);
-        
-        // Try to get caller number from Asterisk channel name
+  
         let caller = "6001"; // Hardcoded for testing
         let called = "5000"; // Default to voicebot extension
-        
         console.log(`📞 Using caller=${caller}, called=${called}`);
-        // Connect to Voicegenie
+  
+        // Initialize Voicegenie session immediately
         try {
           sessionInfo = await initVoicegenieSession(caller, called, socketId);
-          
+  
           // Connect WebSocket to Voicegenie
           vgWebSocket = new WebSocket(sessionInfo.socketURL);
-          
+  
           vgWebSocket.on('open', () => {
             console.log(`✅ Connected to Voicegenie WebSocket for ${sessionInfo.callSid}`);
-            
-            // Send initial status
+  
             sendStatusCallback(sessionInfo.statusCallbackUrl, sessionInfo.callSid, 'initiated');
-            
-            // Send start event
+  
             vgWebSocket.send(JSON.stringify({
               sequenceNumber: 0,
               event: "start",
@@ -177,18 +171,17 @@ const server = net.createServer((socket) => {
               extra_headers: "{}"
             }));
           });
-          
+  
           vgWebSocket.on('message', (message) => {
             try {
               const msgData = JSON.parse(message);
-          
+  
               if (msgData.event === 'media' && msgData.media && msgData.media.payload) {
                 console.log(`📩 Received media from Voicegenie (${msgData.media.payload.length} chars)`);
-          
+  
                 const audioChunk = Buffer.from(msgData.media.payload, 'base64');
                 console.log(`🔊 Decoded ${audioChunk.length} bytes of audio`);
-          
-                // Ensure the socket is writable and the data is a Buffer
+  
                 if (socket.writable && Buffer.isBuffer(audioChunk)) {
                   socket.write(audioChunk, (err) => {
                     if (err) {
@@ -204,7 +197,7 @@ const server = net.createServer((socket) => {
               else if (msgData.event === 'transfer' && msgData.transfer?.agentUri) {
                 const agentUri = msgData.transfer.agentUri;
                 console.log(`🔄 Transfer request to agent: ${agentUri}`);
-          
+  
                 ami.action({
                   Action: 'Setvar',
                   Variable: 'AGENT_SIP_URI',
@@ -219,54 +212,47 @@ const server = net.createServer((socket) => {
                 });
               }
               else {
-                // Explicitly ignore and log non-media events without sending to Asterisk
                 console.log(`📩 Ignoring non-media event from Voicegenie: ${msgData.event}`);
               }
             } catch (error) {
               console.error('❌ Error processing Voicegenie message:', error.message);
             }
           });
-          
-          
+  
           vgWebSocket.on('error', (err) => {
             console.error('❌ Voicegenie WebSocket error:', err.message);
           });
-          
+  
           vgWebSocket.on('close', () => {
             console.log(`🔌 Voicegenie WebSocket closed for call ${sessionInfo?.callSid || socketId}`);
+            socket.end();
           });
-          
-          // Store session
+  
           activeSessions.set(socketId, {
             socket,
             vgWebSocket,
             sessionInfo,
             startTime: new Date()
           });
-          
         } catch (error) {
           console.error('❌ Failed to initialize Voicegenie session:', error.message);
           socket.end();
-          return;
         }
-        
-        return;
+  
+        return; // Crucial: Ensure no further processing of initial non-audio packet
       }
-      
+  
       // After handshake, handle audio data from Asterisk
-      else if (vgWebSocket && vgWebSocket.readyState === WebSocket.OPEN) {
-        // Skip empty or very small packets (likely control messages)
+      if (vgWebSocket && vgWebSocket.readyState === WebSocket.OPEN) {
         if (data.length < 10) {
           console.log(`⏭️ Skipping small packet: ${data.length} bytes`);
           return;
         }
-        
+  
         console.log(`🎤 Processing audio from Asterisk: ${data.length} bytes`);
-        
-        // Convert to base64 for Voicegenie
+  
         const base64Audio = data.toString('base64');
-        
-        // Create media event
+  
         const mediaEvent = {
           sequenceNumber: sequenceNumber++,
           event: 'media',
@@ -278,14 +264,14 @@ const server = net.createServer((socket) => {
           },
           extra_headers: "{}"
         };
-        
-        // Send to Voicegenie
+  
         vgWebSocket.send(JSON.stringify(mediaEvent));
       }
     } catch (error) {
       console.error('❌ Error processing AudioSocket data:', error.message);
     }
   });
+  
   
   // Handle socket close
   socket.on('close', () => {
