@@ -132,7 +132,7 @@ const server = net.createServer((socket) => {
       
       // Initial handshake
       if (!handshakeComplete) {
-        // Send the AudioSocket protocol response
+        // According to protocol, first send protocol version
         const response = Buffer.from("AudioSocket v1.0\r\n", 'utf8');
         socket.write(response);
         console.log(`👋 Sent AudioSocket protocol response`);
@@ -143,10 +143,9 @@ const server = net.createServer((socket) => {
         console.log(`🔍 Channel info: ${channelInfo}`);
         
         // Try to get caller number from Asterisk channel name
-        let caller = "unknown";
-        let called = "5000";
+        let caller = "6001"; // Hardcoded for testing
+        let called = "5000"; // Default to voicebot extension
         
-        // For testing, use hardcoded values
         console.log(`📞 Using caller=${caller}, called=${called}`);
         
         // Connect to Voicegenie
@@ -186,14 +185,20 @@ const server = net.createServer((socket) => {
               
               // Handle media messages (audio from voicebot)
               if (msgData.event === 'media' && msgData.media && msgData.media.payload) {
-                console.log(`📩 Received media from Voicegenie`);
+                console.log(`📩 Received media from Voicegenie (${msgData.media.payload.length} chars)`);
                 
                 // Decode base64 audio
                 const audioChunk = Buffer.from(msgData.media.payload, 'base64');
+                console.log(`🔊 Decoded ${audioChunk.length} bytes of audio`);
                 
-                // Send to Asterisk
+                // Format according to AudioSocket protocol
+                // AudioSocket expects raw audio data with no headers
                 if (socket.writable) {
-                  socket.write(audioChunk);
+                  // Add small delay to ensure connection is stable
+                  setTimeout(() => {
+                    console.log(`📤 Sending ${audioChunk.length} bytes to Asterisk`);
+                    socket.write(audioChunk);
+                  }, 100); // 100ms delay
                 }
               }
               // Handle transfer request
@@ -251,8 +256,16 @@ const server = net.createServer((socket) => {
         return;
       }
       
-      // After handshake, handle audio data - assume all data after handshake is audio
-      if (vgWebSocket && vgWebSocket.readyState === WebSocket.OPEN) {
+      // After handshake, handle audio data from Asterisk
+      else if (vgWebSocket && vgWebSocket.readyState === WebSocket.OPEN) {
+        // Skip empty or very small packets (likely control messages)
+        if (data.length < 10) {
+          console.log(`⏭️ Skipping small packet: ${data.length} bytes`);
+          return;
+        }
+        
+        console.log(`🎤 Processing audio from Asterisk: ${data.length} bytes`);
+        
         // Convert to base64 for Voicegenie
         const base64Audio = data.toString('base64');
         
