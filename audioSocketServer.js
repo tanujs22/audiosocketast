@@ -125,35 +125,45 @@ const server = net.createServer((socket) => {
   
   console.log(`🔌 New AudioSocket connection: ${socket.remoteAddress}:${socket.remotePort}`);
   
+  // Set encoding for string handling - AudioSocket uses text protocol for headers
+  socket.setEncoding('utf8');
+  
+  // Send initial protocol response
+  socket.write("AudioSocket v1.0\r\n");
+  console.log(`👋 Sent initial AudioSocket protocol greeting`);
+  
   // Handle data from Asterisk
   socket.on('data', async (data) => {
     try {
       // First packet should contain the session ID header
       if (!isHeaderReceived) {
         // AudioSocket protocol: first bytes contain session info
-        const headerText = data.toString('utf8', 0, data.indexOf('\n'));
-        console.log(`📑 AudioSocket header: ${headerText}`);
+        const headerText = data.toString('utf8');
+        console.log(`📑 Received AudioSocket header data: ${headerText.trim()}`);
         
-        const headerParts = headerText.split(' ');
+        // Send back protocol confirmation
+        socket.write("AudioSocket v1.0\r\n");
+        console.log(`✅ Sent protocol confirmation response`);
         
-        if (headerParts[0] === 'CHANNEL') {
+        // Parse the header parts
+        const lines = headerText.split('\n');
+        const channelLine = lines.find(line => line.startsWith('CHANNEL'));
+        
+        if (channelLine) {
+          const headerParts = channelLine.split(' ');
           const sessionId = headerParts[1];
           asteriskChannel = headerParts[2] || null;
           
           console.log(`📑 AudioSocket session ID: ${sessionId}, Channel: ${asteriskChannel}`);
           
-          // Try to extract caller info from channel name if available
+          // Extract caller info from channel
           let caller = "unknown";
-          let called = "unknown";
+          let called = "5000"; // Default to voicebot extension
           
           // SIP channel format is typically SIP/number-identifier
-          if (asteriskChannel && asteriskChannel.startsWith('SIP/')) {
-            const channelParts = asteriskChannel.split('/')[1].split('-')[0];
-            caller = channelParts;
+          if (asteriskChannel && asteriskChannel.includes('/')) {
+            caller = asteriskChannel.split('/')[1].split('-')[0];
           }
-          
-          // Default the called number to 5000 (our voicebot extension)
-          called = "5000";
           
           // Connect to Voicegenie
           try {

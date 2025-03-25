@@ -1,21 +1,44 @@
-// middleware-server/amiHandler.js
+// amiHandler.js
 const AmiClient = require('asterisk-ami-client');
+const config = require('./config');
 
+// Configure AMI settings
 const AMI_CONFIG = {
-  username: process.env.AMI_USERNAME,
-  password: process.env.AMI_PASSWORD,
-  host: process.env.AMI_HOST,
-  port: process.env.AMI_PORT,
+  username: config.AMI_USERNAME || 'voicebot',
+  password: config.AMI_PASSWORD || 'your_ami_password_here',
+  host: config.AMI_HOST || '127.0.0.1',
+  port: config.AMI_PORT || 5038,
 };
 
-const ami = new AmiClient({ reconnect: true });
+// Create an instance with reconnect enabled
+const ami = new AmiClient({
+  reconnect: true,
+  keepAlive: true,
+  maxAttemptsCount: Infinity,
+  attemptsDelay: 3000
+});
 
-ami.connect(AMI_CONFIG.username, AMI_CONFIG.password, { host: AMI_CONFIG.host, port: AMI_CONFIG.port })
+// Connect to AMI
+ami.connect(AMI_CONFIG.username, AMI_CONFIG.PASSWORD, { host: AMI_CONFIG.host, port: AMI_CONFIG.port })
   .then(() => console.log('Connected to Asterisk AMI!'))
   .catch(err => console.error('AMI Connection Error:', err));
 
+// Add event listeners
+ami.on('connect', () => {
+  console.log('🔄 AMI connection established');
+});
+
+ami.on('disconnect', () => {
+  console.error('❌ AMI connection lost. Attempting to reconnect...');
+});
+
+ami.on('reconnection', () => {
+  console.log('🔄 Attempting to reconnect to AMI...');
+});
+
 // Stop audio playback
 async function stopAudioPlayback(callChannel) {
+  console.log(`🔇 Stopping audio playback on ${callChannel}`);
   return ami.action({
     Action: 'StopPlayTones',
     Channel: callChannel
@@ -24,6 +47,7 @@ async function stopAudioPlayback(callChannel) {
 
 // Start call recording
 async function startCallRecording(callChannel, recordingFileName) {
+  console.log(`🎬 Starting recording on ${callChannel}`);
   return ami.action({
     Action: 'Monitor',
     Channel: callChannel,
@@ -35,6 +59,7 @@ async function startCallRecording(callChannel, recordingFileName) {
 
 // Stop call recording
 async function stopCallRecording(callChannel) {
+  console.log(`⏹️ Stopping recording on ${callChannel}`);
   return ami.action({
     Action: 'StopMonitor',
     Channel: callChannel
@@ -43,6 +68,7 @@ async function stopCallRecording(callChannel) {
 
 // Hangup call
 async function endCall(callChannel) {
+  console.log(`📴 Ending call on ${callChannel}`);
   return ami.action({
     Action: 'Hangup',
     Channel: callChannel
@@ -51,6 +77,7 @@ async function endCall(callChannel) {
 
 // Warm transfer call
 async function warmTransfer(callChannel, agentExtension) {
+  console.log(`🔄 Transferring ${callChannel} to ${agentExtension}`);
   return ami.action({
     Action: 'Redirect',
     Channel: callChannel,
@@ -60,27 +87,22 @@ async function warmTransfer(callChannel, agentExtension) {
   });
 }
 
-async function originateCall(channel, caller, callId) {
-  const originateAction = {
-    Action: 'Originate',
-    Channel: channel,       // e.g., "Local/bot@bridge"
-    Context: 'bridge',      // the dialplan context where "bot" is defined
-    Exten: 'bot',           // the extension in the [bridge] context
-    Priority: 1,
-    CallerID: caller,
-    Variable: {
-      CALL_ID: callId
-    },
-    Async: true
-  };
-
-  return new Promise((resolve, reject) => {
-    ami.action(originateAction, (err, res) => {
-      if (err) return reject(err);
-      console.log('📞 Bot leg call originated via AMI');
-      resolve(res);
-    });
+// Get channel info
+async function getChannelInfo(callChannel) {
+  console.log(`ℹ️ Getting info for channel ${callChannel}`);
+  return ami.action({
+    Action: 'GetVar',
+    Channel: callChannel,
+    Variable: 'CALLERID(num)'
   });
+}
+
+// Execute direct action
+function action(actionParams, callback) {
+  if (callback) {
+    return ami.action(actionParams, callback);
+  }
+  return ami.action(actionParams);
 }
 
 module.exports = {
@@ -89,5 +111,6 @@ module.exports = {
   stopCallRecording,
   endCall,
   warmTransfer,
-  originateCall
+  getChannelInfo,
+  action
 };
