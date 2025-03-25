@@ -93,7 +93,7 @@ async function initVoicegenieSession(caller, called, sessionId) {
     
     // Extract response data
     const { socketURL, HangupUrl, statusCallbackUrl, recordingStatusUrl } = 
-      vgResponse.data.data;
+      vgResponse.data.data.data;
     
     return {
       callSid,
